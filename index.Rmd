@@ -1,14 +1,34 @@
 ---
 title: "Github Website"
-author: "Antonio Debouse"
+author: "LeeRoy Githero Gibbs"
 date: "11/20/2019"
 output: html_document
 ---
 
-#Simple Website upload
+Place of Origin: Saturn cause woman are from Mars?
 
-##Note: the 6 lines abouve are the YAML
 
-###knite rmd to html file next
-push index.html to github.io repo
+Interests: 
+  1) Trying to figure out if New York pizza is better than Chicago deep-dish...the debate is still raging
+  
+  2) Eating BBQ but acting like a judge at a cooking competition
+  
+  3) Pondering did the age old question: "What came first, the chicken or the egg?" I'm leaning towards the single-cell
+  
+Job Location: NCIS 
+
+Education: Twitter
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+“The other tabs represent work / analyses that I have completed.  Please check them out!”
+
 
