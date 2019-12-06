@@ -1,0 +1,13 @@
+---
+title: "index"
+author: "Antonio Debouse"
+date: "11/20/2019"
+output: html_document
+---
+
+#Simple Website upload
+
+##Note: the 6 lines abouve are the YAML
+
+###knite rmd to html file next
+push index.html to github.io repo
