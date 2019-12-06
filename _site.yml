@@ -1,0 +1,11 @@
+name: "my-website"
+navbar:
+  title: "My Website"
+  left:
+    - text: "Home"
+      href: index.html
+    - text: "Budwesier Case Study"
+      href: Budwesier-Case-Study.html
+    - text: "Case Study 02 DDS"
+      href: Attrition-Predition-Model.html
+      

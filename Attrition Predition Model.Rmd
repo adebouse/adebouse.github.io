@@ -1,0 +1,959 @@
+---
+title: "Case Study 02 DDS"
+author: "Antonio Debouse"
+date: "11/20/2019"
+output: html_document
+---
+
+#Case Study 02 - Final Project
+
+Youtube Video Presenation at: https://youtu.be/g9Bf-9vVnF4
+
+CaseStudy 2 Github Repository website: https://github.com/adebouse/Case-Study-2.git
+
+Github website: adebouse.github.io
+
+
+Introduction:
+
+As a representative of DDS Analytics, I will focus my analysis on identifying varaibles a company can focus on to improve employee development and increase retention rates. Analyzing the frequencies of categorical variables and the medians of continuous variables for specific job titles we hope to identify key predictors that identify employees who are likely to remain and those who will leave/be fired. 
+
+Summary:
+
+We discovered that Overtime, Stock Option and Job Level had a strong correlation with predicting Attrition, and it was possible that those job position with turnover rates higher than the overall company could be due high levels of retirement. 
+
+
+
+```{r}
+library(readr)
+library(tidyverse)
+library(GGally)
+library(corrplot)
+library(DataExplorer)
+library(e1071)
+library(caret)
+library(class)
+library(GoodmanKruskal)
+library(PerformanceAnalytics)
+library(scales)
+
+ 
+
+#Import CaseStudy2 dataset
+
+CaseStudy2 <- read.csv("C:/Users/Antonio Debouse/Desktop/Doing Data Science/GitHub/Case-Study-2/CaseStudy2-data.csv")
+ 
+
+#Check for missing data
+
+sum(is.na(CaseStudy2))
+
+ 
+
+##No missing data
+
+ 
+
+#Inspect dataset variables
+
+str(CaseStudy2)
+
+head(CaseStudy2)
+
+#Change varibles to factors
+
+names <- c('Education','EnvironmentSatisfaction','JobInvolvement','JobLevel', 'JobSatisfaction','PerformanceRating','RelationshipSatisfaction','StockOptionLevel','WorkLifeBalance')
+
+ 
+#Change character variables to factors
+CaseStudy2[,names] <- lapply(CaseStudy2[,names] , factor)
+
+str(CaseStudy2)
+
+#Reorder columns with factors and integers grouped together, eliminate unneeded columns
+
+CaseStudy2_reorg <- CaseStudy2[,c(4,6,8,9,12,13,15:19,24,26,27,29,32,2,5,7,14,20,21,22,25,30,31,33:36,3)]
+
+view(CaseStudy2_reorg)
+
+str(CaseStudy2_reorg)
+
+ 
+ 
+```
+
+
+```{r}
+
+
+#plot Overall Attrition frequency
+
+
+CaseStudy2_reorg %>% ggplot(aes(x=Attrition, fill =Attrition))+
+  geom_bar(aes(y = (..count..)/sum(..count..)))+
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count", vjust = -0.25) +
+  scale_y_continuous(labels = percent) +
+  ggtitle("Frequency of Attrition Chart")+
+  ylab("Percentage")
+
+
+```
+
+The company has retained only 16% of employees with 84% having exited the company; therefore, my target is to create a model with an accuracy of greater than 84% since that is the accuracy I would get by guessing "no" everytime.
+
+ 
+
+ 
+
+```{r}
+
+#Identify any trends specific to any job role
+
+##Sum of Observations for each Job Role
+print(CaseStudy2_reorg %>%
+  group_by(JobRole) %>%
+  summarize(count= n()) %>%
+  arrange(desc(count)))
+
+  
+
+##Barchart(count) for job roles
+
+CaseStudy2_reorg %>% ggplot(aes(x= JobRole, fill = JobRole)) +
+  geom_bar() +
+  coord_flip()+
+  geom_text(aes(label=..count..),stat = "count",hjust = -0.25)+
+  ggtitle("Chart of Job Roles Sums")+
+ theme(legend.position = "none")
+
+ 
+
+##Barchart(percentage) for job roles
+
+CaseStudy2_reorg %>% ggplot(aes(x=JobRole, fill =JobRole))+
+  geom_bar(aes(y = (..count..)/sum(..count..)))+
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..))), stat = "count", hjust = -0.25) +
+  scale_y_continuous(labels = percent) +
+  ggtitle("JobRole Percentage Breakout Chart")+
+  ylab("Percentage")+
+  theme(legend.position = "none")+
+  coord_flip()
+
+##Create bar chart with Attrition percentages grouped by JobRole
+CaseStudy2_reorg %>% ggplot(aes(x=JobRole, fill =Attrition))+
+  geom_bar(aes(y = (..count..)/sum(..count..)))+
+  geom_text(aes(y = ((..count..)/sum(..count..)), label = scales::percent((..count..)/sum(..count..)), vjust = -0.25), stat = "count") +
+  scale_y_continuous(labels = percent) +
+  ggtitle("Frequency of Attrition Chart")+
+  ylab("Percentage")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+ 
+
+##Create Frequency table for Attrition grouped by JobRole
+JobRoleAttrition_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$Attrition)
+
+##Feed JobRoleAttrition frequency table to prop.table() to produce relative percentages
+JobRoleAttrition_Percentages <-round(prop.table(JobRoleAttrition_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRoleAttrition_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "Attrition","Freq")
+
+
+view(dataframecovert)
+
+#Statistical Summary of Attrition = No, group by JobRole
+dataframecovert %>% filter(Attrition == "No") %>%
+  summary(dataframecovert$Freq) 
+
+#Standard deviation of Attrition = No, group by JobRole
+dataframecovert %>% filter(Attrition == "No") %>%
+  mutate(standev = sd(Freq)) 
+
+
+#Create a column chart with relative percentage of Attrition grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =Attrition,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of Attrition Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+
+###Create Frequency table for EducationField, Grouped by JobRole and sub-grouped by Attrition (yes/no)
+###ftable(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$Attrition,CaseStudy2_reorg$EducationField)
+
+
+
+
+```
+
+
+
+```{r} 
+##Create Frequency table for BusinessTravel grouped by JobRole
+JobRole_BusinessTravel_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$BusinessTravel)
+
+##Feed JobRoleBusinessTravel frequency table to prop.table() to produce relative percentages
+JobRole_BusinessTravel_Percentages <-round(prop.table(JobRole_BusinessTravel_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_BusinessTravel_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "BusinessTravel","Freq")
+
+
+view(dataframecovert)
+
+
+#Create a column chart with relative percentage of BusinessTravel grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =BusinessTravel,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of BusinessTravel Grouped by Job Tiltle")+
+  ylab("Percentage")
+ 
+
+```
+
+ 
+```{r}
+##Create Frequency table for Education grouped by JobRole
+JobRole_Education_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$Education)
+
+##Feed JobRole_Education frequency table to prop.table() to produce relative percentages
+JobRole_Education_Percentages <-round(prop.table(JobRole_Education_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_Education_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "Education","Freq")
+
+
+view(dataframecovert)
+
+
+#Create a column chart with relative percentage of Education grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =Education,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of Education Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+ 
+```{r}
+##Create Frequency table for EducationField grouped by JobRole
+JobRole_EducationField_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$EducationField)
+
+##Feed JobRole_EducationField frequency table to prop.table() to produce relative percentages
+JobRole_EducationField_Percentages <-round(prop.table(JobRole_EducationField_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_EducationField_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "EducationField","Freq")
+
+
+#Create a column chart with relative percentage of EducationField grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =EducationField,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of EducationField Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+
+
+```{r}
+##Create Frequency table for EnvironSatisfaction grouped by JobRole
+JobRole_EnvironSatisfaction_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$EnvironmentSatisfaction)
+
+##Feed JobRole_EnvironSatisfaction frequency table to prop.table() to produce relative percentages
+JobRole_EnvironSatisfaction_Percentages <-round(prop.table(JobRole_EnvironSatisfaction_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_EnvironSatisfaction_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "EnvironSatisfaction","Freq")
+
+
+
+#Create a column chart with relative percentage of EnvironSatisfaction grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =EnvironSatisfaction,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of EnvironSatisfaction Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+
+
+
+```{r}
+##Create Frequency table for JobInvolvement grouped by JobRole
+JobRole_JobInvolvement_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$JobInvolvement)
+
+##Feed JobRole_JobInvolvement frequency table to prop.table() to produce relative percentages
+JobRole_JobInvolvement_Percentages <-round(prop.table(JobRole_JobInvolvement_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_JobInvolvement_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "JobInvolvement","Freq")
+
+
+
+#Create a column chart with relative percentage of JobInvolvement grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =JobInvolvement,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of JobInvolvement Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+```{r}
+##Create Frequency table for MaritalStatus grouped by JobRole
+JobRole_MaritalStatus_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$MaritalStatus)
+
+##Feed JobRole_MaritalStatus frequency table to prop.table() to produce relative percentages
+JobRole_MaritalStatus_Percentages <-round(prop.table(JobRole_MaritalStatus_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_MaritalStatus_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "MaritalStatus","Freq")
+
+
+
+#Create a column chart with relative percentage of MaritalStatus grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =MaritalStatus,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of MaritalStatus Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+ 
+```{r}
+##Create Frequency table for Overtime grouped by JobRole
+JobRole_Overtime_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$OverTime)
+
+##Feed JobRole_Overtime frequency table to prop.table() to produce relative percentages
+JobRole_Overtime_Percentages <-round(prop.table(JobRole_Overtime_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_Overtime_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "Overtime","Freq")
+
+
+
+#Create a column chart with relative percentage of Overtime grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =Overtime,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of Overtime Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+
+```{r}
+##Create Frequency table for PerformanceRating grouped by JobRole
+JobRole_PerformanceRating_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$PerformanceRating)
+
+##Feed JobRole_PerformanceRating frequency table to prop.table() to produce relative percentages
+JobRole_PerformanceRating_Percentages <-round(prop.table(JobRole_PerformanceRating_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_PerformanceRating_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "PerformanceRating","Freq")
+
+
+
+#Create a column chart with relative percentage of PerformanceRating grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =PerformanceRating,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of PerformanceRating Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+ 
+```{r}
+##Create Frequency table for RelationshipSatisfaction grouped by JobRole
+JobRole_RelationshipSatisfaction_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$RelationshipSatisfaction
+)
+
+##Feed JobRole_RelationshipSatisfaction frequency table to prop.table() to produce relative percentages
+JobRole_RelationshipSatisfaction_Percentages <-round(prop.table(JobRole_RelationshipSatisfaction_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_RelationshipSatisfaction_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "RelationshipSatisfaction","Freq")
+
+
+
+#Create a column chart with relative percentage of RelationshipSatisfaction grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =RelationshipSatisfaction,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of RelationshipSatisfaction Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+
+
+
+```{r}
+##Create Frequency table for StockOptionLevel grouped by JobRole
+JobRole_StockOptionLevel_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$StockOptionLevel
+)
+
+##Feed JobRole_StockOptionLevel frequency table to prop.table() to produce relative percentages
+JobRole_StockOptionLevel_Percentages <-round(prop.table(JobRole_StockOptionLevel_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_StockOptionLevel_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "StockOptionLevel","Freq")
+
+
+
+#Create a column chart with relative percentage of StockOptionLevel grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =StockOptionLevel,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of StockOptionLevel Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+```{r}
+##Create Frequency table for WorkLifeBalance grouped by JobRole
+JobRole_WorkLifeBalance_Frequency <- table(CaseStudy2_reorg$JobRole,CaseStudy2_reorg$WorkLifeBalance
+)
+
+##Feed JobRole_WorkLifeBalance frequency table to prop.table() to produce relative percentages
+JobRole_WorkLifeBalance_Percentages <-round(prop.table(JobRole_WorkLifeBalance_Frequency,margin = 1),2)
+
+#Place table into dataframe
+dataframecovert <- as.data.frame(JobRole_WorkLifeBalance_Percentages)
+dataframecovert$Freq <- dataframecovert$Freq * 100
+
+#Change column names
+colnames(dataframecovert) <- c("Job Title", "WorkLifeBalance","Freq")
+
+
+
+#Create a column chart with relative percentage of WorkLifeBalance grouped by JobRole
+
+dataframecovert %>% ggplot(aes(x=`Job Title`, fill =WorkLifeBalance,y=Freq))+
+  geom_col()+
+  geom_text(aes(label=Freq,),position = position_stack(vjust = 0.5))+
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))+
+  ggtitle("Percentage of WorkLifeBalance Grouped by Job Tiltle")+
+  ylab("Percentage")
+
+
+```
+
+```{r}
+##Statistical Summary of Continuous Variables grouped by JobRole
+##medians of continuous variables grouped by JobRole
+
+MediansofContinousVars <- CaseStudy2_reorg %>% group_by(JobRole) %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+  
+summary(MediansofContinousVars)
+
+#Medians for Healthcare Rep
+MediansofHCrepVars <- CaseStudy2_reorg %>% group_by(JobRole=="Healthcare Representative") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofHCrepVars)
+
+
+#Medians for Human Resources
+MediansofHR <- CaseStudy2_reorg %>% group_by(JobRole=="Human Resources") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofHR)
+
+#Medians for Laboratory Technician
+MediansofLabtech <- CaseStudy2_reorg %>% group_by(JobRole=="Laboratory Technician") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofLabtech)
+
+#Medians for Manager
+MediansofManager <- CaseStudy2_reorg %>% group_by(JobRole== "Manager") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofManager)
+
+#Medians for Manufacturing Director
+MediansofMD <- CaseStudy2_reorg %>% group_by(JobRole== "Manufacturing Director") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofMD)
+
+#Medians for Research Director
+MediansofRD <- CaseStudy2_reorg %>% group_by(JobRole== "Research Director") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofRD)
+
+
+#Medians for Research Scientist
+MediansofRS <- CaseStudy2_reorg %>% group_by(JobRole== "Research Scientist") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofRS)
+
+#Medians for Sales Executive
+MediansofSalesExecutive <- CaseStudy2_reorg %>% group_by(JobRole== "Sales Executive") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofSalesExecutive)
+
+
+#Medians for Sales Representative
+MediansofSalesRep <- CaseStudy2_reorg %>% group_by(JobRole== "Sales Representative") %>%
+  summarise(Median_Age = median(Age),
+            Median_DailyRate = median(DailyRate),
+            Median_DistanceFromHome = median(DistanceFromHome),
+            Median_HourlyRate = median(HourlyRate),
+            Median_MonthlyIncome = median(MonthlyIncome),
+            Median_MonthlyRate = median(MonthlyRate),
+            Median_NumCompaniesWorked = median(NumCompaniesWorked),
+            Median_PercentSalaryHike = median(PercentSalaryHike),
+            Median_TotalWorkingYears = median(TotalWorkingYears),
+            Median_TrainTimesLastYear = median(TrainingTimesLastYear),
+            Median_YearsAtCompany = median(YearsAtCompany),
+            Median_YearsINCurrentRole = median(YearsInCurrentRole),
+            Median_YearsSinceLastPromotion = median(YearsSinceLastPromotion),
+            Median_YearsWithCurrManager = median(YearsWithCurrManager))
+summary(MediansofSalesRep)
+```
+
+
+
+
+
+```{r}
+
+#Create function to calculate correlation and p-values
+
+##Correlation matrix with p-values...see citation #1 below
+
+cor.prob <- function (X, dfr = nrow(X) - 2) {
+
+  R <- cor(X, use="pairwise.complete.obs")
+
+  above <- row(R) < col(R)
+
+  r2 <- R[above]^2
+
+  Fstat <- r2 * dfr/(1 - r2)
+
+  R[above] <- 1 - pf(Fstat, 1, dfr)
+
+  R[row(R) == col(R)] <- NA
+
+  R
+
+}
+
+ 
+
+# Create a function to dump the cor.prob output to a 4 column matrix with row/column indices, correlation, and p-value.
+
+##See citation #2 below
+
+flattenSquareMatrix <- function(m) {
+
+  if( (class(m) != "matrix") | (nrow(m) != ncol(m))) stop("Must be a square matrix.")
+
+  if(!identical(rownames(m), colnames(m))) stop("Row and column names must be equal.")
+
+  ut <- upper.tri(m)
+
+  data.frame(Explanatory_Var = rownames(m)[row(m)[ut]],
+
+             Response_Var = rownames(m)[col(m)[ut]],
+
+             cor=t(m)[ut],
+
+             p=m[ut])
+
+}
+
+ 
+
+#Dummify all factor variables to use the correlation plot
+
+Dummy <- dummyVars("~ .", data = CaseStudy2_reorg)
+
+Case2Relab <- data.frame(predict(Dummy, newdata = CaseStudy2_reorg))
+
+
+
+#Create correlation matrix with p-vales, then input into FlattenSquareMatrix to create a 4 column data frame
+corMaster <- flattenSquareMatrix (cor.prob(Case2Relab))
+
+#Check dataframe for 4 columns
+
+print(head(corMaster,10))
+
+ 
+
+#Order correlation in descending order with descending absolute correlation value
+
+corMaster_reorg <- corMaster[order(-abs(corMaster$cor)),]
+
+#Show 10 highest absolute correlation values
+
+print(head(corMaster_reorg,10))
+
+
+ 
+
+#filter the Response_Var for only Attrition.No outcomes
+
+AttritionCor <- subset(corMaster_reorg, Response_Var == 'Attrition.No')
+
+print(head(AttritionCor,20))
+
+
+ 
+
+#filter the Response_Var for only Attrition.Yes outcomes
+
+AttritionCor <- subset(corMaster_reorg, Response_Var == 'Attrition.Yes')
+
+print(head(AttritionCor,10))
+
+
+```
+
+Citation #1 for Correlation matrix of p-values:
+
+Title: correlation matricies: getting p-values?
+Author: Bill Venables, Statistician, CMIS Environmetrics Project
+Date: Tue Jan 4 06:05:39 CET 2000
+Availability: <https://stat.ethz.ch/pipermail/r-help/2000-January/009758.html>
+
+ 
+
+Citation #2 for FlattenSquareMatrix Function:
+
+Title: Exploring correlations with R using cor.prob and chart.Correlation
+Author: Stephen Turner
+Date: August 27, 2012
+Availability: https://gist.github.com/stephenturner/3492773
+
+
+```{r}
+
+#Create a model to classification model to predict attrition with sensitivty & specificity >= 60%
+
+
+
+#Import dataset without Attrition
+CaseStudyCompSet_NO_Attrition <- read.csv("C:/Users/Antonio Debouse/Desktop/Doing Data Science/GitHub/Case-Study-2/CaseStudy2CompSet No Attrition.csv")
+str(CaseStudyCompSet_NO_Attrition)
+
+#Change character variables to factors
+CaseStudyCompSet_NO_Attrition[,names] <- lapply(CaseStudyCompSet_NO_Attrition[,names] , factor)
+
+
+set.seed(12)
+iterations = 100
+masterAcc = matrix(nrow = iterations)
+splitPerc = .7 #Training / Test split Percentage
+
+for(j in 1:iterations)
+{
+  
+  trainIndices = sample(1:dim(CaseStudy2_reorg)[1],round(splitPerc * dim(CaseStudy2_reorg)[1]))
+  train = CaseStudy2_reorg[trainIndices,]
+  test = CaseStudy2_reorg[-trainIndices,]
+  
+  model = naiveBayes(train[,c(12,15,8,9,7,11,25,28,21,17,30)],train$Attrition)
+  table(predict(model,test[,c(12,15,8,9,7,11,25,28,21,17,30)]),test$Attrition)
+  CM = confusionMatrix(table(predict(model,test[,c(12,15,8,9,7,11,25,28,21,17,30)]),test$Attrition))
+  masterAcc[j] = CM$overall[1]
+}
+
+MeanAcc = colMeans(masterAcc)
+
+MeanAcc
+CM
+
+#Input prediction into NO_Attrition dataset
+AttritionPreds <- naiveBayes(CaseStudy2_reorg[,c(12,15,8,9,7,11,25,28,21,17,30)], CaseStudy2_reorg$Attrition)
+
+CaseStudyCompSet_NO_Attrition$AttritionPreds = predict(AttritionPreds,CaseStudyCompSet_NO_Attrition)
+
+#Create dataframe with ID and Attrition Predictions only
+ID_AttritionPreds_Dataframe <- CaseStudyCompSet_NO_Attrition[,c("ID","AttritionPreds")]
+ID_AttritionPreds_Dataframe
+
+#Save data to CSV file
+write.table(ID_AttritionPreds_Dataframe,"Case2PredictionsDebouse_Attrition.csv",sep = ",",row.names = FALSE)
+
+
+
+
+#Knn with single k value
+
+set.seed(7)
+splitPerc = .7
+
+
+trainIndices = sample(1:dim(CaseStudy2_reorg)[1],round(splitPerc * dim(CaseStudy2_reorg)[1]))
+train = CaseStudy2_reorg[trainIndices,]
+test = CaseStudy2_reorg[-trainIndices,]
+
+classifications = knn(train[,c(17:30)],test[,c(17:30)],as.factor(train$Attrition), prob = TRUE, k = 10)
+table(as.factor(test$Attrition),classifications)
+CM = confusionMatrix(table(as.factor(test$Attrition),classifications))
+
+CM
+
+###Variable names used in knn model: "Age", "DailyRate", "DistanceFromHome", "HourlyRate", "MonthlyIncome", "MonthlyRate", "NumCompaniesWorked", "PercentSalaryHike", "TotalWorkingYears", "TrainingTimesLastYear", "YearsAtCompany", "YearsInCurrentRole", "YearsSinceLastPromotion","YearsWithCurrManager"
+
+```
+
+
+
+
+
+
+```{r}
+#Create a multi-linear regression model to estimate MonthlyIncome with an RSME of <= 3000
+
+##Create a correlation matrix plot
+
+library(reshape2)
+library(readxl)
+
+#Import Dataset without Salary
+CaseStudy2CompSet_NO_Salary <- read_excel("C:/Users/Antonio Debouse/Desktop/Doing Data Science/GitHub/Case-Study-2/CaseStudy2CompSet No Salary.xlsx")
+view(CaseStudy2CompSet_NO_Salary)
+str(CaseStudy2CompSet_NO_Salary)
+
+#Change character variables to factors
+CaseStudy2CompSet_NO_Salary[,names] <- lapply(CaseStudy2CompSet_NO_Salary[,names] , factor)
+
+ggpairs(CaseStudy2_reorg[,17:31])
+
+ 
+
+##MLR model to predict salary
+
+
+SalaryPrediction_model = lm(MonthlyIncome ~ TotalWorkingYears + JobRole + Department + Gender+ BusinessTravel + DailyRate + JobLevel + PerformanceRating ,data = CaseStudy2_reorg)
+
+summary(SalaryPrediction_model)
+confint(SalaryPrediction_model)
+
+
+#Cross Validation
+set.seed(7)
+TrainObs = sample(seq(1,dim(CaseStudy2_reorg)[1]),round(.75*dim(CaseStudy2_reorg)[1]),replace = FALSE)
+SalaryTrain = CaseStudy2_reorg[TrainObs,]
+SalaryTrain
+SalaryTest = CaseStudy2_reorg[-TrainObs,]
+SalaryTest
+model1_fit = 
+SalaryPrediction_model = lm(MonthlyIncome ~ TotalWorkingYears + JobRole + Department + Gender+ BusinessTravel + DailyRate + JobLevel + PerformanceRating ,data = SalaryTrain)
+summary(model1_fit)
+
+
+
+
+#Prediction Salary(MonthlyIncome) for the CaseStudy2 dataset with NO Salary 
+CaseStudy2CompSet_NO_Salary$SalaryPreds = predict(SalaryPrediction_model,newdata = CaseStudy2CompSet_NO_Salary)
+
+
+view(CaseStudy2CompSet_NO_Salary)
+
+#Create dataframe with ID and Salary Predictions only
+ID_SalaryPreds_Dataframe <- CaseStudy2CompSet_NO_Salary[,c("ID","SalaryPreds")]
+ID_SalaryPreds_Dataframe
+
+#Save data to CSV file
+write.table(ID_SalaryPreds_Dataframe,"Case2PredictionsDebouseSalary.csv",sep = ",",row.names = FALSE)
+
+```
+
+
+
+
+
