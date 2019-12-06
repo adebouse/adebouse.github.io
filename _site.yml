@@ -1,6 +1,6 @@
-name: "my-website"
+name: "ADEBOUSE Github Website"
 navbar:
-  title: "My Website"
+  title: "ADEBOUSE Github Website"
   left:
     - text: "Home"
       href: index.html
