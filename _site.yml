@@ -2,7 +2,7 @@ name: "ADEBOUSE Github Website"
 navbar:
   title: "ADEBOUSE Github Website"
   left:
-    - text: "Home"
+    - text: "About Me"
       href: index.html
     - text: "Budwesier Case Study"
       href: Budwesier-Case-Study.html
